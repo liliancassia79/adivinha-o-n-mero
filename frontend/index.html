@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Adivinhe o Número (API)</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="container">
+        <h1>Adivinhe o Número Secreto (1-100)</h1>
+        
+        <div class="jogo-area">
+            <p>Seu palpite:</p>
+            <input type="number" id="input-palpite" min="1" max="100">
+            <button id="btn-adivinhar">Adivinhar</button>
+            <p id="mensagem-feedback">Boa sorte!</p>
+        </div>
+
+        <div id="area-acertou" class="hidden">
+            <h2>Você Acertou!</h2>
+            <p>Você usou <span id="total-tentativas">0</span> tentativas.</p>
+            <input type="text" id="input-nome" placeholder="Digite seu nome para o ranking">
+            <button id="btn-salvar-score">Salvar no Ranking</button>
+        </div>
+    </div>
+
+    <div class="ranking-container">
+        <h2>🏆 Ranking (Melhores 5)</h2>
+        <button id="btn-atualizar-ranking">Atualizar Ranking</button>
+        <ol id="lista-ranking">
+            </ol>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
