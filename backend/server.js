@@ -135,10 +135,11 @@ app.get('/api/high-scores', (req, res) => {
   res.json(highScores);
 });
 
-// Middleware de tratamento de erros
 app.use((err, req, res, next) => {
   console.error(err && err.stack ? err.stack : err);
-  res.status(500).json({ error: 'Erro interno do servidor.' });
+  const status = err && err.message === 'Not allowed by CORS' ? 403 : 500;
+  const message = status === 403 ? 'Origem não permitida.' : 'Erro interno do servidor.';
+  res.status(status).json({ error: message });
 });
 
 // Exporta app para testes
