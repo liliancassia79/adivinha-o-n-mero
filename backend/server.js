@@ -114,7 +114,7 @@ app.post('/api/high-scores', async (req, res, next) => {
     const nomeSanitizado = nome.trim().slice(0, 40); // limita 40 chars
 
     tentativas = Number(tentativas);
-    if (!Number.isInteger(tentativas) || tentativas < 0) {
+    if (!Number.isInteger(tentativas) || tentativas < 1) {
       return res.status(400).json({ error: 'Tentativas inválidas.' });
     }
 
