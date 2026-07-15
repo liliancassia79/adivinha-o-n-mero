@@ -7,7 +7,9 @@ const tmpFile = path.join(__dirname, '..', 'data', 'test-highscores.json');
 function clearTestFile() {
   try {
     if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
-  } catch (err) {}
+  } catch (err) {
+    // noop: arquivo pode não existir durante limpeza de teste
+  }
 }
 
 describe('API Endpoints', () => {

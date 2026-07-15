@@ -42,7 +42,9 @@ async function ensureDataFile() {
   const dir = path.dirname(PERSISTENCE_FILE);
   try {
     await fs.mkdir(dir, { recursive: true });
-  } catch (err) {}
+  } catch (err) {
+    // diretório pode já existir; segue o fluxo normal
+  }
 
   try {
     const data = await fs.readFile(PERSISTENCE_FILE, 'utf-8');
