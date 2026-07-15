@@ -1,63 +1,145 @@
-// 1. Importações
+// 1. Importações e configuração
 const express = require('express');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
+const fs = require('fs').promises;
+const path = require('path');
+
 const app = express();
 
 // 2. Configurações (Middlewares)
-app.use(cors()); // Permite que o Netlify (Frontend) acesse este Backend
-app.use(express.json()); // Permite que o servidor leia JSON
+const PORT = process.env.PORT || 3000;
+const PERSISTENCE_FILE = process.env.PERSISTENCE_FILE || path.join(__dirname, 'data', 'highscores.json');
+const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '';
+const NODE_ENV = process.env.NODE_ENV || 'development';
 
-// 3. O "Cérebro" e o "Banco de Dados" em Memória
+// CORS: em produção, restringe a origem; em desenvolvimento permite localhost
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true); // allow non-browser tools or same-origin
+    if (NODE_ENV !== 'production') return callback(null, true);
+    if (ALLOWED_ORIGIN && origin === ALLOWED_ORIGIN) return callback(null, true);
+    return callback(new Error('Not allowed by CORS'));
+  }
+};
+
+app.use(cors(corsOptions));
+app.use(express.json());
+
+// Rate limiter para endpoint de palpites
+const guessLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minuto
+  max: 30, // limite por IP
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// 3. Banco de Dados em arquivo simples (JSON)
 let numeroSecreto = Math.floor(Math.random() * 100) + 1;
-let highScores = []; // Nosso "Banco de Dados" em memória
+let highScores = [];
 
-console.log(`O número secreto é: ${numeroSecreto}`);
+async function ensureDataFile() {
+  const dir = path.dirname(PERSISTENCE_FILE);
+  try {
+    await fs.mkdir(dir, { recursive: true });
+  } catch (err) {}
+
+  try {
+    const data = await fs.readFile(PERSISTENCE_FILE, 'utf-8');
+    highScores = JSON.parse(data);
+    if (!Array.isArray(highScores)) highScores = [];
+  } catch (err) {
+    // arquivo pode não existir ainda — inicia vazio
+    highScores = [];
+    await saveHighScores();
+  }
+}
+
+async function saveHighScores() {
+  const tmp = `${PERSISTENCE_FILE}.tmp`;
+  await fs.writeFile(tmp, JSON.stringify(highScores, null, 2), 'utf-8');
+  await fs.rename(tmp, PERSISTENCE_FILE);
+}
+
+if (NODE_ENV !== 'production') {
+  console.log(`O número secreto é: ${numeroSecreto}`);
+}
+
+// Carrega arquivo na inicialização
+ensureDataFile().catch(err => {
+  console.error('Erro ao carregar high scores:', err);
+});
 
 // --- Definição da API ---
 
 // ROTA 1: O palpite do jogador
-// (Ex: POST /api/guess)
-app.post('/api/guess', (req, res) => {
-    const { palpite } = req.body; // Pega o palpite enviado pelo frontend
-    const numeroPalpite = parseInt(palpite, 10);
+app.post('/api/guess', guessLimiter, (req, res) => {
+  const { palpite } = req.body || {};
+  const numeroPalpite = Number(palpite);
 
-    if (numeroPalpite > numeroSecreto) {
-        res.json({ mensagem: 'Muito alto!' });
-    } else if (numeroPalpite < numeroSecreto) {
-        res.json({ mensagem: 'Muito baixo!' });
-    } else {
-        // O jogador acertou!
-        // Gera um novo número para a próxima rodada
-        numeroSecreto = Math.floor(Math.random() * 100) + 1;
-        console.log(`Acertou! O novo número secreto é: ${numeroSecreto}`);
-        res.json({ mensagem: 'Correto!', novoNumeroSecreto: true });
+  if (!Number.isInteger(numeroPalpite) || numeroPalpite < 1 || numeroPalpite > 100) {
+    return res.status(400).json({ error: 'Palpite inválido. Envie um número inteiro entre 1 e 100.' });
+  }
+
+  if (numeroPalpite > numeroSecreto) {
+    return res.json({ mensagem: 'Muito alto!', acertou: false });
+  } else if (numeroPalpite < numeroSecreto) {
+    return res.json({ mensagem: 'Muito baixo!', acertou: false });
+  } else {
+    // O jogador acertou!
+    numeroSecreto = Math.floor(Math.random() * 100) + 1;
+    if (NODE_ENV !== 'production') {
+      console.log(`Acertou! O novo número secreto é: ${numeroSecreto}`);
     }
+    return res.json({ mensagem: 'Correto!', acertou: true });
+  }
 });
 
 // ROTA 2: Salvar um novo high score
-// (Ex: POST /api/high-scores)
-app.post('/api/high-scores', (req, res) => {
-    const { nome, tentativas } = req.body;
-    
-    // Salva no nosso "BD"
-    highScores.push({ nome, tentativas });
-    
-    // Mantém apenas os 5 melhores (menor número de tentativas)
+app.post('/api/high-scores', async (req, res, next) => {
+  try {
+    let { nome, tentativas } = req.body || {};
+
+    if (typeof nome !== 'string' || !nome.trim()) {
+      return res.status(400).json({ error: 'Nome inválido.' });
+    }
+
+    const nomeSanitizado = nome.trim().slice(0, 40); // limita 40 chars
+
+    tentativas = Number(tentativas);
+    if (!Number.isInteger(tentativas) || tentativas < 0) {
+      return res.status(400).json({ error: 'Tentativas inválidas.' });
+    }
+
+    highScores.push({ nome: nomeSanitizado, tentativas });
     highScores.sort((a, b) => a.tentativas - b.tentativas);
     highScores = highScores.slice(0, 5);
-    
-    console.log("Ranking atual:", highScores);
-    res.status(201).json(highScores); // Retorna o ranking atualizado
+
+    await saveHighScores();
+
+    return res.status(201).json(highScores);
+  } catch (err) {
+    next(err);
+  }
 });
 
 // ROTA 3: Buscar o ranking
-// (Ex: GET /api/high-scores)
 app.get('/api/high-scores', (req, res) => {
-    res.json(highScores); // Simplesmente retorna nosso array
+  res.json(highScores);
 });
 
-// 4. Iniciar o Servidor
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Servidor de Jogo (API) rodando na porta ${PORT}`);
+// Middleware de tratamento de erros
+app.use((err, req, res, next) => {
+  console.error(err && err.stack ? err.stack : err);
+  res.status(500).json({ error: 'Erro interno do servidor.' });
 });
+
+// Exporta app para testes
+module.exports = app;
+
+// Inicia o servidor somente se executado diretamente
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Servidor de Jogo (API) rodando na porta ${PORT}`);
+  });
+}
