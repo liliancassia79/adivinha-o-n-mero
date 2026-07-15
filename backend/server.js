@@ -57,10 +57,15 @@ async function ensureDataFile() {
   }
 }
 
-async function saveHighScores() {
-  const tmp = `${PERSISTENCE_FILE}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(highScores, null, 2), 'utf-8');
-  await fs.rename(tmp, PERSISTENCE_FILE);
+let saveHighScoresInFlight = Promise.resolve();
+
+function saveHighScores() {
+  saveHighScoresInFlight = saveHighScoresInFlight.then(async () => {
+    const tmp = `${PERSISTENCE_FILE}.${process.pid}.${Date.now()}.tmp`;
+    await fs.writeFile(tmp, JSON.stringify(highScores, null, 2), 'utf-8');
+    await fs.rename(tmp, PERSISTENCE_FILE);
+  });
+  return saveHighScoresInFlight;
 }
 
 if (NODE_ENV !== 'production') {
