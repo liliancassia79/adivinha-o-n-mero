@@ -136,6 +136,7 @@ app.get('/api/high-scores', (req, res) => {
 });
 
 app.use((err, req, res, next) => {
+  void next;
   console.error(err && err.stack ? err.stack : err);
   const status = err && err.message === 'Not allowed by CORS' ? 403 : 500;
   const message = status === 403 ? 'Origem não permitida.' : 'Erro interno do servidor.';
