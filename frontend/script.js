@@ -1,7 +1,8 @@
 // --- API base URL detection ---
 // For local development the backend runs at http://localhost:3000
 // For production set window.__API_URL__ before loading this script (e.g. via build tool or by editing this file)
-const API_URL = window.__API_URL__ || (window.location.hostname === 'localhost' ? 'http://localhost:3000' : 'https://SEU_BACKEND_URL');
+const API_URL = window.__API_URL__ || (window.location.hostname === 'localhost' ? 'http://localhost:3000' : '');
+if (!API_URL) throw new Error('API_URL não configurada. Defina window.__API_URL__ em produção.');
 
 // --- Elementos do HTML (DOM) ---
 const inputPalpite = document.getElementById('input-palpite');
