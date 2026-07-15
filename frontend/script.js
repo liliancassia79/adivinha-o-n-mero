@@ -1,7 +1,8 @@
-// --- Conexão com a API (Backend) ---
-// O seu backend estará rodando localmente na porta 3000
-// Quando fizermos o deploy, SÓ VAMOS MUDAR ESTA LINHA.
-const API_URL = 'http://localhost:3000';
+// --- API base URL detection ---
+// For local development the backend runs at http://localhost:3000
+// For production set window.__API_URL__ before loading this script (e.g. via build tool or by editing this file)
+const API_URL = window.__API_URL__ || (window.location.hostname === 'localhost' ? 'http://localhost:3000' : '');
+if (!API_URL) throw new Error('API_URL não configurada. Defina window.__API_URL__ em produção.');
 
 // --- Elementos do HTML (DOM) ---
 const inputPalpite = document.getElementById('input-palpite');
@@ -15,37 +16,57 @@ const btnSalvarScore = document.getElementById('btn-salvar-score');
 
 const btnAtualizarRanking = document.getElementById('btn-atualizar-ranking');
 const listaRanking = document.getElementById('lista-ranking');
+const formJogo = document.getElementById('form-jogo');
 
 // --- Variáveis do Jogo ---
 let contagemTentativas = 0;
+let aguardandoResposta = false;
 
 // --- Funções da API (A "Ponte") ---
 
 // 1. Função para fazer um palpite (POST)
-async function fazerPalpite() {
+async function fazerPalpite(event) {
+    if (event) event.preventDefault();
+    if (aguardandoResposta) return;
+
     const palpite = inputPalpite.value;
     if (!palpite) return;
 
-    contagemTentativas++;
-    
+    const numeroPalpite = Number(palpite);
+    if (!Number.isInteger(numeroPalpite) || numeroPalpite < 1 || numeroPalpite > 100) {
+        mensagemFeedback.textContent = 'Digite um número entre 1 e 100.';
+        mensagemFeedback.style.color = 'red';
+        return;
+    }
+
+    // Desabilita botão enquanto aguarda
+    aguardandoResposta = true;
+    btnAdivinhar.disabled = true;
+    mensagemFeedback.textContent = 'Enviando...';
+
     try {
-        // 1. Envia o palpite para o Backend
         const resposta = await fetch(`${API_URL}/api/guess`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ palpite: palpite })
+            body: JSON.stringify({ palpite: numeroPalpite })
         });
 
         const dados = await resposta.json();
 
-        // 2. Mostra a resposta do Backend
-        mensagemFeedback.textContent = dados.mensagem;
+        if (!resposta.ok) {
+            mensagemFeedback.textContent = dados.error || 'Erro no servidor.';
+            mensagemFeedback.style.color = 'red';
+            return;
+        }
 
-        // 3. Se acertou...
+        // Incrementa apenas em caso de requisição bem-sucedida
+        contagemTentativas++;
+        mensagemFeedback.textContent = dados.mensagem || '';
+
         if (dados.acertou) {
-            areaAcertou.classList.remove('hidden'); // Mostra a área de salvar
+            areaAcertou.classList.remove('hidden');
             totalTentativas.textContent = contagemTentativas;
             mensagemFeedback.style.color = 'green';
         } else {
@@ -55,6 +76,9 @@ async function fazerPalpite() {
     } catch (error) {
         mensagemFeedback.textContent = 'Erro ao conectar com o servidor.';
         console.error('Erro no palpite:', error);
+    } finally {
+        aguardandoResposta = false;
+        btnAdivinhar.disabled = false;
     }
 }
 
@@ -64,11 +88,9 @@ async function atualizarRanking() {
         const resposta = await fetch(`${API_URL}/api/high-scores`);
         const ranking = await resposta.json();
 
-        // Limpa a lista antiga
         listaRanking.innerHTML = '';
 
-        // Preenche a lista
-        if (ranking.length === 0) {
+        if (!Array.isArray(ranking) || ranking.length === 0) {
             listaRanking.innerHTML = '<li>Ninguém jogou ainda. Seja o primeiro!</li>';
         } else {
             ranking.forEach(jogador => {
@@ -84,25 +106,36 @@ async function atualizarRanking() {
 
 // 3. Função para salvar o score (POST)
 async function salvarScore() {
+    if (aguardandoResposta) return;
+
     const nome = inputNome.value;
-    if (!nome) {
+    if (!nome || !nome.trim()) {
         alert('Por favor, digite um nome.');
         return;
     }
 
+    aguardandoResposta = true;
+    btnSalvarScore.disabled = true;
+
     try {
-        await fetch(`${API_URL}/api/high-scores`, {
+        const resposta = await fetch(`${API_URL}/api/high-scores`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({ 
-                nome: nome, 
+                nome: nome.trim(), 
                 tentativas: contagemTentativas 
             })
         });
 
-        // Reseta o jogo
+        const dados = await resposta.json();
+
+        if (!resposta.ok) {
+            alert(dados.error || 'Erro ao salvar score.');
+            return;
+        }
+
         alert('Score salvo com sucesso!');
         inputPalpite.value = '';
         inputNome.value = '';
@@ -111,16 +144,19 @@ async function salvarScore() {
         areaAcertou.classList.add('hidden');
         contagemTentativas = 0;
 
-        // Atualiza o ranking para mostrar o novo score
         atualizarRanking();
 
     } catch (error) {
         console.error('Erro ao salvar score:', error);
+        alert('Erro ao salvar score.');
+    } finally {
+        aguardandoResposta = false;
+        btnSalvarScore.disabled = false;
     }
 }
 
 // --- Event Listeners (Botões) ---
-btnAdivinhar.addEventListener('click', fazerPalpite);
+formJogo.addEventListener('submit', fazerPalpite);
 btnSalvarScore.addEventListener('click', salvarScore);
 btnAtualizarRanking.addEventListener('click', atualizarRanking);
 

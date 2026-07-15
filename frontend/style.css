@@ -47,8 +47,13 @@ button {
     transition: background-color 0.2s;
 }
 
-button:hover {
+button:hover:not(:disabled) {
     background-color: #185abc;
+}
+
+button:disabled {
+    background-color: #9bb6ea;
+    cursor: not-allowed;
 }
 
 #mensagem-feedback {
